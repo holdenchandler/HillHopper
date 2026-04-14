@@ -1,0 +1,6 @@
+{
+  "name": "HillHopper",
+  "description": "Hop through the hills with confidence! HillHopper is a cozy, cartoon-style mountain GPS designed for the Poconos and beyond. Featuring real-time Deer-Risk Zones, mountain-aware routing, and a friendly outdoorsy personality. Stay safe, stay cozy, and never miss a scenic overlook.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["AI-powered hazard prediction", "U.S.-only navigation", "Cartoon map visualization"]
+}
