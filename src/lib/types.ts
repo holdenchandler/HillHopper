@@ -23,6 +23,8 @@ export interface RouteStep {
   duration: number;
   type: 'turn' | 'straight' | 'hazard' | 'scenic';
   hazardInfo?: string;
+  lat: number;
+  lng: number;
 }
 
 export type WildlifeType = 'deer-live' | 'deer-dead' | 'raccoon' | 'squirrel' | 'bear';

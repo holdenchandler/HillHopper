@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
 import { motion, AnimatePresence } from 'motion/react';
-import { DeerZone, MountainPoint, WildlifeReport, WildlifeType } from '../../lib/types';
+import { DeerZone, MountainPoint, WildlifeReport, WildlifeType, RouteStep } from '../../lib/types';
 import { Trees as TreeIcon, Mountain as MountainIcon, Tent, Camera, AlertTriangle, Skull } from 'lucide-react';
 
 interface CartoonMapProps {
@@ -12,6 +12,7 @@ interface CartoonMapProps {
   points: MountainPoint[];
   carLocation: [number, number];
   carHeading: number;
+  route?: RouteStep[];
   themeColors?: {
     grass: string;
     forest: string;
@@ -44,6 +45,7 @@ export const CartoonMap: React.FC<CartoonMapProps> = ({
   points,
   carLocation,
   carHeading,
+  route = [],
   themeColors = CARTOON_COLORS
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -124,15 +126,33 @@ export const CartoonMap: React.FC<CartoonMapProps> = ({
           })}
         </g>
 
-        {/* Roads (Simulated) */}
-        <path
-          d={`M ${dimensions.width/2 - 200} ${dimensions.height/2 + 200} Q ${dimensions.width/2} ${dimensions.height/2} ${dimensions.width/2 + 200} ${dimensions.height/2 - 200}`}
-          fill="none"
-          stroke={themeColors.road}
-          strokeWidth="12"
-          strokeLinecap="round"
-          className="opacity-80"
-        />
+        {/* Route Path */}
+        {route.length > 1 && (
+          <path
+            d={d3.line<RouteStep>()
+              .x(d => projection([d.lng, d.lat])?.[0] || 0)
+              .y(d => projection([d.lng, d.lat])?.[1] || 0)
+              .curve(d3.curveBasis)(route.filter(r => typeof r.lat === 'number' && typeof r.lng === 'number')) || ''}
+            fill="none"
+            stroke={themeColors.road}
+            strokeWidth="16"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="opacity-40"
+          />
+        )}
+
+        {/* Roads (Simulated - now only if no route) */}
+        {route.length <= 1 && (
+          <path
+            d={`M ${dimensions.width/2 - 200} ${dimensions.height/2 + 200} Q ${dimensions.width/2} ${dimensions.height/2} ${dimensions.width/2 + 200} ${dimensions.height/2 - 200}`}
+            fill="none"
+            stroke={themeColors.road}
+            strokeWidth="12"
+            strokeLinecap="round"
+            className="opacity-80"
+          />
+        )}
 
         {/* User Reported Wildlife Hazards */}
         <g>

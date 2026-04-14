@@ -4,42 +4,62 @@ export const getMountainRoute = async (
   start: [number, number],
   end: [number, number]
 ): Promise<RouteStep[]> => {
-  // In a real app, this would call a routing API with custom weightings
-  // for elevation and road type.
-  // For this demo, we'll return a simulated "Mountain Flow" route.
-  
-  return [
-    {
-      instruction: "Head North on Broad St towards the Poconos",
-      distance: 1200,
-      duration: 180,
-      type: 'straight'
-    },
-    {
-      instruction: "Turn left onto Mountain Rd. Caution: Steep Grade (12%)",
-      distance: 3500,
-      duration: 600,
-      type: 'hazard',
-      hazardInfo: "Steep incline ahead. Downshift for control."
-    },
-    {
-      instruction: "Keep right at the fork. Scenic Overlook coming up on your left.",
-      distance: 2000,
-      duration: 300,
-      type: 'scenic'
-    },
-    {
-      instruction: "Entering High Deer-Risk Zone. Reducing speed recommended.",
-      distance: 5000,
-      duration: 900,
-      type: 'hazard',
-      hazardInfo: "Active migration corridor. Watch the forest edges!"
-    },
-    {
-      instruction: "Arrive at Hillside Cabin",
+  try {
+    const response = await fetch(
+      `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&steps=true`
+    );
+    const data = await response.json();
+
+    if (data.code !== 'Ok') {
+      throw new Error('Routing failed');
+    }
+
+    const route = data.routes[0];
+    const steps: RouteStep[] = [];
+
+    route.legs[0].steps.forEach((step: any) => {
+      steps.push({
+        instruction: step.maneuver.instruction,
+        distance: step.distance,
+        duration: step.duration,
+        type: step.maneuver.type === 'turn' ? 'turn' : 'straight',
+        lat: step.maneuver.location[1],
+        lng: step.maneuver.location[0]
+      });
+    });
+
+    // Add final destination step
+    steps.push({
+      instruction: "Arrive at Destination",
       distance: 0,
       duration: 0,
-      type: 'straight'
-    }
-  ];
+      type: 'straight',
+      lat: end[0],
+      lng: end[1]
+    });
+
+    return steps;
+  } catch (error) {
+    console.error("OSRM Routing failed, falling back to simulation", error);
+    // Fallback to simulation if OSRM is down
+    const interpolate = (s: number, e: number, t: number) => s + (e - s) * t;
+    return [
+      {
+        instruction: "Head towards destination (Simulation Fallback)",
+        distance: 1000,
+        duration: 120,
+        type: 'straight',
+        lat: interpolate(start[0], end[0], 0.5),
+        lng: interpolate(start[1], end[1], 0.5)
+      },
+      {
+        instruction: "Arrive at Destination",
+        distance: 0,
+        duration: 0,
+        type: 'straight',
+        lat: end[0],
+        lng: end[1]
+      }
+    ];
+  }
 };

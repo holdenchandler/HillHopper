@@ -67,23 +67,18 @@ export const USSearch: React.FC<USSearchProps> = ({
   };
 
   useEffect(() => {
-    const apiKey = (import.meta as any).env.VITE_GOOGLE_MAPS_API_KEY;
-    if (!apiKey) {
-      console.warn("Google Maps API Key missing. Falling back to Nominatim.");
-      return;
-    }
-
-    if ((window as any).google?.maps?.places) {
-      setGoogleReady(true);
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => setGoogleReady(true);
-    document.head.appendChild(script);
+    let count = 0;
+    let timeoutId: NodeJS.Timeout;
+    const checkGoogle = () => {
+      if ((window as any).google?.maps?.places) {
+        setGoogleReady(true);
+      } else if (count < 20) { // Check for 10 seconds
+        count++;
+        timeoutId = setTimeout(checkGoogle, 500);
+      }
+    };
+    checkGoogle();
+    return () => clearTimeout(timeoutId);
   }, []);
 
   useEffect(() => {
@@ -122,18 +117,22 @@ export const USSearch: React.FC<USSearchProps> = ({
   };
 
   const performGoogleSearch = (val: string): Promise<any[]> => {
-    return new Promise((resolve, reject) => {
-      if (!autocompleteService.current) return resolve([]);
+    return new Promise((resolve) => {
+      if (!autocompleteService.current || !(window as any).google?.maps) return resolve([]);
 
       const options: any = {
         input: val,
         componentRestrictions: { country: 'us' }
       };
 
-      if (userLocation) {
-        // Use location and radius for biasing
-        options.location = new (window as any).google.maps.LatLng(userLocation[0], userLocation[1]);
-        options.radius = 50000; // 50km bias
+      if (userLocation && typeof userLocation[0] === 'number' && typeof userLocation[1] === 'number') {
+        try {
+          // Use location and radius for biasing
+          options.location = new (window as any).google.maps.LatLng(userLocation[0], userLocation[1]);
+          options.radius = 50000; // 50km bias
+        } catch (e) {
+          console.error("Error creating LatLng for Google Search", e);
+        }
       }
 
       autocompleteService.current.getPlacePredictions(options, (predictions: any, status: any) => {
@@ -252,7 +251,7 @@ export const USSearch: React.FC<USSearchProps> = ({
   };
 
   return (
-    <div className="relative w-full max-w-md mx-auto">
+    <div className="relative w-full max-w-md">
       <div className="relative">
         <div className="absolute left-4 top-1/2 -translate-y-1/2 text-[#40513B]/40">
           <SearchIcon size={20} />

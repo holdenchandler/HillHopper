@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Mountain, 
@@ -33,6 +33,7 @@ import {
 import { THEMES, Theme } from './lib/themes';
 import { getDistance } from './lib/utils';
 import { CartoonMap } from './components/Map/CartoonMap';
+import { RealMap } from './components/Map/RealMap';
 import { NavigationOverlay } from './components/Navigation/NavigationOverlay';
 import { USSearch } from './components/Search/USSearch';
 import { calculateWildlifeRisk, getWildlifeZones, createWildlifeReport } from './services/deerService';
@@ -47,9 +48,16 @@ type AppScreen = 'home' | 'navigation' | 'search' | 'settings' | 'hazards' | 'lo
 
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>('home');
+  const [mapType, setMapType] = useState<'cartoon' | 'real'>('cartoon');
   const [isNavigating, setIsNavigating] = useState(false);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [carLocation, setCarLocation] = useState<[number, number]>([41.3242, -74.8018]); // Default to Milford, PA
+  const carLocationRef = useRef<[number, number]>(carLocation);
+  
+  useEffect(() => {
+    carLocationRef.current = carLocation;
+  }, [carLocation]);
+
   const [carHeading, setCarHeading] = useState(45);
   const [searchRadius, setSearchRadius] = useState(25);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -125,6 +133,22 @@ export default function App() {
       </Card>
     </motion.div>
   );
+
+  useEffect(() => {
+    // Load Google Maps API once
+    const apiKey = (import.meta as any).env.VITE_GOOGLE_MAPS_API_KEY;
+    if (apiKey && !(window as any).google?.maps) {
+      // Check if script already exists in DOM
+      const existingScript = document.querySelector('script[src*="maps.googleapis.com/maps/api/js"]');
+      if (!existingScript) {
+        const script = document.createElement('script');
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+        script.async = true;
+        script.defer = true;
+        document.head.appendChild(script);
+      }
+    }
+  }, []);
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
 
@@ -203,9 +227,43 @@ export default function App() {
     return () => clearInterval(interval);
   }, [carLocation, wildlifeReports]);
 
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isNavigating && route.length > 0) {
+      interval = setInterval(() => {
+        setCurrentStepIndex(prev => {
+          const next = prev + 1;
+          if (next < route.length) {
+            const nextStep = route[next];
+            const currentLoc = carLocationRef.current;
+            
+            // Calculate heading
+            const dy = nextStep.lat - currentLoc[0];
+            const dx = nextStep.lng - currentLoc[1];
+            const angle = Math.atan2(dx, dy) * (180 / Math.PI);
+            
+            if (!isNaN(angle)) {
+              setCarHeading(angle);
+            }
+            
+            setCarLocation([nextStep.lat, nextStep.lng]);
+            return next;
+          } else {
+            setIsNavigating(false);
+            setScreen('home');
+            return prev;
+          }
+        });
+      }, 2000); // Advance every 2 seconds for demo
+    }
+    return () => clearInterval(interval);
+  }, [isNavigating, route]);
+
   const startNavigation = async (dest: [number, number], name?: string) => {
+    console.log("Starting navigation to", dest, name);
     try {
       const newRoute = await getMountainRoute(carLocation, dest);
+      console.log("Route calculated:", newRoute);
       setRoute(newRoute);
       setCurrentStepIndex(0);
       setIsNavigating(true);
@@ -368,42 +426,78 @@ export default function App() {
           </motion.div>
         );
       case 'navigation':
-        return (
-          <div className="relative h-full">
-            <CartoonMap 
-              center={carLocation}
-              zoom={14}
-              deerZones={deerZones}
-              wildlifeReports={wildlifeReports}
-              points={MOCK_POINTS}
-              carLocation={carLocation}
-              carHeading={carHeading}
-              themeColors={currentTheme.colors.map}
-            />
-            <NavigationOverlay 
-              currentStep={route[currentStepIndex]}
-              nextStep={route[currentStepIndex + 1]}
-              deerRisk={deerRisk}
-              wildlifeReports={wildlifeReports}
-              carLocation={carLocation}
-              eta="4:45 PM"
-              distanceRemaining="12.4 mi"
-              onReportHazard={(type) => {
-                const report = createWildlifeReport(carLocation[0], carLocation[1], type);
-                setWildlifeReports(prev => [...prev, report]);
-              }}
-            />
-            <div className="absolute top-6 left-6 pointer-events-auto flex gap-2">
-              <Button 
-                variant="secondary" 
-                className="rounded-2xl border-4 border-[#40513B]/10 bg-white/90 backdrop-blur font-black uppercase text-xs tracking-widest flex items-center gap-2"
-                onClick={() => {
-                  setIsNavigating(false);
-                  setScreen('home');
-                }}
-              >
-                <XCircle size={18} className="text-red-500" /> End Navigation
+        if (route.length === 0) {
+          return (
+            <div className="h-full flex flex-col items-center justify-center p-8 text-center bg-[#F5F5F0]">
+              <AlertTriangle size={48} className="text-orange-500 mb-4" />
+              <h2 className="text-2xl font-black mb-2">Route Not Found</h2>
+              <p className="text-[#40513B]/60 mb-6">We couldn't calculate a path to your destination. Please try again.</p>
+              <Button onClick={() => setScreen('home')} className="rounded-2xl bg-[#40513B] text-white px-8 h-12 font-black uppercase tracking-widest">
+                Go Back
               </Button>
+            </div>
+          );
+        }
+        return (
+          <div className="relative h-full flex flex-col">
+            <div className="relative flex-1 h-full">
+              {mapType === 'cartoon' ? (
+                <CartoonMap 
+                  center={carLocation}
+                  zoom={14}
+                  deerZones={deerZones}
+                  wildlifeReports={wildlifeReports}
+                  points={MOCK_POINTS}
+                  carLocation={carLocation}
+                  carHeading={carHeading}
+                  route={route}
+                  themeColors={currentTheme.colors.map}
+                />
+              ) : (
+                <RealMap 
+                  center={carLocation}
+                  zoom={14}
+                  carLocation={carLocation}
+                  carHeading={carHeading}
+                  route={route}
+                  deerZones={deerZones}
+                  wildlifeReports={wildlifeReports}
+                  points={MOCK_POINTS}
+                />
+              )}
+              
+              <NavigationOverlay 
+                currentStep={route[currentStepIndex] || { instruction: 'Calculating...', distance: 0, duration: 0, type: 'straight', lat: carLocation[0], lng: carLocation[1] }}
+                nextStep={route[currentStepIndex + 1]}
+                deerRisk={deerRisk}
+                wildlifeReports={wildlifeReports}
+                carLocation={carLocation}
+                eta="4:45 PM"
+                distanceRemaining="12.4 mi"
+                onReportHazard={(type) => {
+                  const report = createWildlifeReport(carLocation[0], carLocation[1], type);
+                  setWildlifeReports(prev => [...prev, report]);
+                }}
+              />
+              <div className="absolute top-6 left-6 pointer-events-auto flex gap-2">
+                <Button 
+                  variant="secondary" 
+                  className="rounded-2xl border-4 border-[#40513B]/10 bg-white/90 backdrop-blur font-black uppercase text-xs tracking-widest flex items-center gap-2"
+                  onClick={() => {
+                    setIsNavigating(false);
+                    setScreen('home');
+                  }}
+                >
+                  <XCircle size={18} className="text-red-500" /> End Navigation
+                </Button>
+                <Button 
+                  variant="secondary" 
+                  className="rounded-2xl border-4 border-[#40513B]/10 bg-white/90 backdrop-blur font-black uppercase text-xs tracking-widest flex items-center gap-2"
+                  onClick={() => setMapType(mapType === 'cartoon' ? 'real' : 'cartoon')}
+                >
+                  <MapIcon size={18} className="text-[#40513B]" /> {mapType === 'cartoon' ? 'Real Map' : 'Cartoon Map'}
+                </Button>
+              </div>
             </div>
           </div>
         );
@@ -420,12 +514,23 @@ export default function App() {
               </Button>
               <h2 className="text-2xl font-black">Plan Your Route</h2>
             </div>
-            <USSearch 
-              onSelect={(lat, lng, label) => startNavigation([lat, lng], label)} 
-              userLocation={userLocation || carLocation}
-              searchRadius={searchRadius}
-              onRadiusChange={setSearchRadius}
-            />
+            <div className="flex gap-2 items-start max-w-2xl mx-auto">
+              <div className="flex-1">
+                <USSearch 
+                  onSelect={(lat, lng, label) => startNavigation([lat, lng], label)} 
+                  userLocation={userLocation || carLocation}
+                  searchRadius={searchRadius}
+                  onRadiusChange={setSearchRadius}
+                />
+              </div>
+              <Button 
+                onClick={() => setScreen('home')}
+                className="h-14 rounded-2xl bg-white border-4 border-[#40513B]/20 text-[#40513B] hover:bg-[#40513B]/5 shadow-lg px-4 flex items-center gap-2 shrink-0"
+              >
+                <HomeIcon size={20} />
+                <span className="font-black uppercase text-[10px] tracking-widest hidden sm:inline">Go Home</span>
+              </Button>
+            </div>
 
             {(navHistory.length > 0 || favorites.length > 0) && (
               <div className="mt-8 space-y-6">
