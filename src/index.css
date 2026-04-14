@@ -128,3 +128,7 @@
     @apply font-sans;
     }
 }
+
+[data-state=active] {
+  background-color: var(--active-bg, transparent) !important;
+}

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search as SearchIcon, MapPin, Flag } from 'lucide-react';
+import { Search as SearchIcon, MapPin, Flag, History, Trash2, X } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Card } from '../ui/card';
 import { Slider } from '../ui/slider';
 import { motion, AnimatePresence } from 'motion/react';
+import { getDistance } from '../../lib/utils';
 
 interface USSearchProps {
   onSelect: (lat: number, lng: number, label: string) => void;
@@ -14,18 +15,6 @@ interface USSearchProps {
 }
 
 // Haversine formula for distance in miles
-const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-  const R = 3958.8; // Radius of the Earth in miles
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = 
-    Math.sin(dLat/2) * Math.sin(dLat/2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
-    Math.sin(dLon/2) * Math.sin(dLon/2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-  return R * c;
-};
-
 export const USSearch: React.FC<USSearchProps> = ({ 
   onSelect, 
   userLocation, 
@@ -38,8 +27,44 @@ export const USSearch: React.FC<USSearchProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [googleReady, setGoogleReady] = useState(false);
+  const [isFocused, setIsFocused] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
   const autocompleteService = useRef<any>(null);
   const placesService = useRef<any>(null);
+
+  useEffect(() => {
+    const savedHistory = localStorage.getItem('hillhopper_search_history');
+    if (savedHistory) {
+      try {
+        setHistory(JSON.parse(savedHistory));
+      } catch (e) {
+        console.error("Failed to parse search history", e);
+      }
+    }
+  }, []);
+
+  const saveToHistory = (item: any) => {
+    setHistory(prev => {
+      const filtered = prev.filter(h => h.id !== item.id);
+      const newHistory = [item, ...filtered].slice(0, 5);
+      localStorage.setItem('hillhopper_search_history', JSON.stringify(newHistory));
+      return newHistory;
+    });
+  };
+
+  const clearHistory = () => {
+    setHistory([]);
+    localStorage.removeItem('hillhopper_search_history');
+  };
+
+  const removeFromHistory = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setHistory(prev => {
+      const newHistory = prev.filter(h => h.id !== id);
+      localStorage.setItem('hillhopper_search_history', JSON.stringify(newHistory));
+      return newHistory;
+    });
+  };
 
   useEffect(() => {
     const apiKey = (import.meta as any).env.VITE_GOOGLE_MAPS_API_KEY;
@@ -106,8 +131,9 @@ export const USSearch: React.FC<USSearchProps> = ({
       };
 
       if (userLocation) {
+        // Use location and radius for biasing
         options.location = new (window as any).google.maps.LatLng(userLocation[0], userLocation[1]);
-        options.radius = searchRadius * 1609.34; // Miles to meters
+        options.radius = 50000; // 50km bias
       }
 
       autocompleteService.current.getPlacePredictions(options, (predictions: any, status: any) => {
@@ -115,7 +141,8 @@ export const USSearch: React.FC<USSearchProps> = ({
           if (status === (window as any).google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
             return resolve([]);
           }
-          return reject(new Error(`Google Search failed: ${status}`));
+          console.error("Google Predictions Error:", status);
+          return resolve([]); // Resolve empty instead of rejecting to allow fallback
         }
 
         resolve(predictions.map((p: any) => ({
@@ -154,13 +181,27 @@ export const USSearch: React.FC<USSearchProps> = ({
 
     setIsLoading(true);
     try {
-      let searchResults: any[] = [];
+      let googleResults: any[] = [];
+      let nominatimResults: any[] = [];
       
       if (googleReady) {
-        searchResults = await performGoogleSearch(val);
-      } else {
-        searchResults = await performNominatimSearch(val, searchRadius);
+        googleResults = await performGoogleSearch(val);
       }
+      
+      // Always try Nominatim as well, or as fallback
+      if (googleResults.length < 5) {
+        nominatimResults = await performNominatimSearch(val, searchRadius);
+      }
+
+      // Merge results, prioritizing Google
+      let searchResults = [...googleResults];
+      
+      // Add Nominatim results if they aren't already in the list (by name)
+      nominatimResults.forEach(nr => {
+        if (!searchResults.some(sr => sr.display_name.toLowerCase() === nr.display_name.toLowerCase())) {
+          searchResults.push(nr);
+        }
+      });
 
       if (userLocation) {
         // For Nominatim we already have lat/lon. For Google we'll need to fetch them on selection or here.
@@ -192,6 +233,7 @@ export const USSearch: React.FC<USSearchProps> = ({
 
   const handleSelect = async (res: any) => {
     try {
+      saveToHistory(res);
       if (res.source === 'google') {
         setIsLoading(true);
         const coords = await fetchGoogleDetails(res.id);
@@ -218,12 +260,26 @@ export const USSearch: React.FC<USSearchProps> = ({
         <Input
           value={query}
           onChange={(e) => handleSearch(e.target.value)}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setTimeout(() => setIsFocused(false), 200)}
           placeholder={placeholder}
-          className={`pl-12 h-14 bg-white/90 backdrop-blur border-4 rounded-2xl font-bold text-lg focus-visible:ring-[#40513B] shadow-lg transition-all ${
+          className={`pl-12 pr-24 h-14 bg-white/90 backdrop-blur border-4 rounded-2xl font-bold text-lg focus-visible:ring-[#40513B] shadow-lg transition-all ${
             error ? 'border-red-400' : 'border-[#40513B]/20'
           }`}
         />
         <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+          {query && (
+            <button
+              onClick={() => {
+                setQuery('');
+                setResults([]);
+                setError(null);
+              }}
+              className="p-1 hover:bg-[#40513B]/10 rounded-full transition-colors text-[#40513B]/40"
+            >
+              <X size={18} />
+            </button>
+          )}
           {isLoading && (
             <motion.div
               animate={{ rotate: 360 }}
@@ -290,6 +346,48 @@ export const USSearch: React.FC<USSearchProps> = ({
                       {res.distance.toFixed(1)} mi
                     </span>
                   )}
+                </button>
+              ))}
+            </Card>
+          </motion.div>
+        )}
+        {isFocused && query === '' && history.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="absolute top-full left-0 right-0 mt-2 z-50"
+          >
+            <Card className="bg-white/95 backdrop-blur shadow-2xl border-4 border-[#40513B]/20 rounded-2xl overflow-hidden">
+              <div className="p-3 border-b border-[#40513B]/10 flex justify-between items-center bg-[#40513B]/5">
+                <span className="text-[10px] font-black uppercase text-[#40513B]/50 tracking-widest">Recent Searches</span>
+                <button 
+                  onClick={clearHistory}
+                  className="text-[10px] font-black uppercase text-red-500 hover:text-red-600 flex items-center gap-1"
+                >
+                  <Trash2 size={12} />
+                  Clear All
+                </button>
+              </div>
+              {history.map((res, i) => (
+                <button
+                  key={res.id || i}
+                  onClick={() => handleSelect(res)}
+                  className="w-full p-4 flex items-start gap-3 hover:bg-[#40513B]/5 transition-colors text-left border-b border-[#40513B]/10 last:border-0 group"
+                >
+                  <History size={18} className="text-[#40513B]/40 mt-1 shrink-0" />
+                  <div className="flex-1">
+                    <p className="font-bold text-[#141414] text-sm line-clamp-1">{res.display_name}</p>
+                    <p className="text-[10px] font-medium text-[#40513B]/60 uppercase tracking-wider">
+                      {res.type} • {res.source === 'google' ? 'Google Result' : (res.address?.state || 'USA')}
+                    </p>
+                  </div>
+                  <button
+                    onClick={(e) => removeFromHistory(e, res.id)}
+                    className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded-full transition-all"
+                  >
+                    <X size={14} className="text-red-400" />
+                  </button>
                 </button>
               ))}
             </Card>

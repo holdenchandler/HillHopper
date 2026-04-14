@@ -12,6 +12,13 @@ interface CartoonMapProps {
   points: MountainPoint[];
   carLocation: [number, number];
   carHeading: number;
+  themeColors?: {
+    grass: string;
+    forest: string;
+    road: string;
+    water: string;
+    mountain: string;
+  };
 }
 
 const CARTOON_COLORS = {
@@ -36,7 +43,8 @@ export const CartoonMap: React.FC<CartoonMapProps> = ({
   wildlifeReports = [],
   points,
   carLocation,
-  carHeading
+  carHeading,
+  themeColors = CARTOON_COLORS
 }) => {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
@@ -69,7 +77,7 @@ export const CartoonMap: React.FC<CartoonMapProps> = ({
         width="100%"
         height="100%"
         className="cursor-grab active:cursor-grabbing"
-        style={{ background: CARTOON_COLORS.grass }}
+        style={{ background: themeColors.grass }}
       >
         {/* Decorative "Hand-drawn" Grid */}
         <defs>
@@ -120,7 +128,7 @@ export const CartoonMap: React.FC<CartoonMapProps> = ({
         <path
           d={`M ${dimensions.width/2 - 200} ${dimensions.height/2 + 200} Q ${dimensions.width/2} ${dimensions.height/2} ${dimensions.width/2 + 200} ${dimensions.height/2 - 200}`}
           fill="none"
-          stroke={CARTOON_COLORS.road}
+          stroke={themeColors.road}
           strokeWidth="12"
           strokeLinecap="round"
           className="opacity-80"
@@ -189,14 +197,15 @@ export const CartoonMap: React.FC<CartoonMapProps> = ({
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ delay: i * 0.1 }}
                 >
-                  {pt.type === 'peak' && <MountainIcon size={24} className="text-[#40513B]" />}
-                  {pt.type === 'cabin' && <Tent size={24} className="text-[#8B4513]" />}
-                  {pt.type === 'overlook' && <Camera size={24} className="text-[#6096B4]" />}
+                  {pt.type === 'peak' && <MountainIcon size={24} style={{ color: themeColors.forest }} />}
+                  {pt.type === 'cabin' && <Tent size={24} style={{ color: themeColors.mountain }} />}
+                  {pt.type === 'overlook' && <Camera size={24} style={{ color: themeColors.water }} />}
                   {pt.type === 'deer-crossing' && <AlertTriangle size={24} className="text-orange-500" />}
                   <text
                     y={30}
                     textAnchor="middle"
-                    className="text-[10px] font-bold fill-[#40513B] font-sans uppercase tracking-wider"
+                    className="text-[10px] font-bold font-sans uppercase tracking-wider"
+                    style={{ fill: themeColors.forest }}
                   >
                     {pt.label}
                   </text>

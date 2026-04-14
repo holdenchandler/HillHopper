@@ -15,8 +15,23 @@ import {
   ShieldAlert,
   ChevronRight,
   Info,
-  Camera
+  Camera,
+  ArrowLeft,
+  LocateFixed,
+  Palette,
+  Check,
+  Users,
+  Heart,
+  History as HistoryIcon,
+  Star,
+  XCircle
 } from 'lucide-react';
+import { 
+  CATEGORIES, 
+  CategoryLocation 
+} from './lib/mountainData';
+import { THEMES, Theme } from './lib/themes';
+import { getDistance } from './lib/utils';
 import { CartoonMap } from './components/Map/CartoonMap';
 import { NavigationOverlay } from './components/Navigation/NavigationOverlay';
 import { USSearch } from './components/Search/USSearch';
@@ -37,6 +52,10 @@ export default function App() {
   const [carLocation, setCarLocation] = useState<[number, number]>([41.3242, -74.8018]); // Default to Milford, PA
   const [carHeading, setCarHeading] = useState(45);
   const [searchRadius, setSearchRadius] = useState(25);
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [currentTheme, setCurrentTheme] = useState<Theme>(THEMES[0]);
+  const [favorites, setFavorites] = useState<CategoryLocation[]>([]);
+  const [navHistory, setNavHistory] = useState<CategoryLocation[]>([]);
   const [locationStatus, setLocationStatus] = useState<'pending' | 'active' | 'denied'>('pending');
   const [deerRisk, setDeerRisk] = useState<{ level: RiskLevel; reason: string }>({ level: 'low', reason: '' });
   const [deerZones, setDeerZones] = useState<DeerZone[]>([]);
@@ -184,15 +203,49 @@ export default function App() {
     return () => clearInterval(interval);
   }, [carLocation, wildlifeReports]);
 
-  const startNavigation = async (dest: [number, number]) => {
+  const startNavigation = async (dest: [number, number], name?: string) => {
     try {
       const newRoute = await getMountainRoute(carLocation, dest);
       setRoute(newRoute);
       setCurrentStepIndex(0);
       setIsNavigating(true);
       setScreen('navigation');
+      
+      if (name) {
+        const newHistoryItem = { name, lat: dest[0], lng: dest[1] };
+        setNavHistory(prev => {
+          const filtered = prev.filter(h => h.name !== name);
+          return [newHistoryItem, ...filtered].slice(0, 10);
+        });
+      }
     } catch (error) {
       console.error("Load failed", error);
+    }
+  };
+
+  const toggleFavorite = (loc: CategoryLocation) => {
+    setFavorites(prev => {
+      const exists = prev.find(f => f.name === loc.name);
+      if (exists) {
+        return prev.filter(f => f.name !== loc.name);
+      }
+      return [loc, ...prev];
+    });
+  };
+
+  const locateMe = () => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          setCarLocation([latitude, longitude]);
+          setUserLocation([latitude, longitude]);
+          setLocationStatus('active');
+        },
+        (error) => {
+          console.error("Locate me failed:", error);
+        }
+      );
     }
   };
 
@@ -231,6 +284,22 @@ export default function App() {
                 <SettingsIcon />
               </Button>
             </div>
+
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setScreen('hazards')}
+              className="bg-orange-100 border-4 border-orange-200 rounded-[2rem] p-4 flex items-center gap-4 cursor-pointer shadow-sm"
+            >
+              <div className="w-12 h-12 bg-orange-500 rounded-2xl flex items-center justify-center text-white shadow-lg">
+                <Users size={24} />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-black uppercase text-xs tracking-widest text-orange-700">Become a Hopper</h3>
+                <p className="text-[10px] font-bold text-orange-800/60 uppercase tracking-tight">Help the community by reporting deer sightings</p>
+              </div>
+              <ChevronRight size={20} className="text-orange-500" />
+            </motion.div>
 
             <Card className="bg-gradient-to-br from-[#40513B] to-[#2D3A2A] text-white p-6 rounded-[2.5rem] shadow-2xl relative overflow-hidden border-0">
               <div className="relative z-10">
@@ -271,16 +340,27 @@ export default function App() {
 
             <div className="flex-1 overflow-hidden">
               <h3 className="font-black uppercase text-xs tracking-widest text-[#40513B]/50 mb-4">Recent Adventures</h3>
-              <div className="space-y-3">
-                {['High Point State Park', 'Grey Towers', 'Dingmans Falls'].map((place, i) => (
-                  <Card key={i} className="p-4 rounded-2xl border-4 border-[#40513B]/5 hover:border-[#40513B]/20 transition-all cursor-pointer flex items-center justify-between">
+              <div className="space-y-3 overflow-y-auto max-h-[30vh] pr-2">
+                {[
+                  { name: 'High Point State Park', lat: 41.3300, lng: -74.6600 },
+                  { name: 'Grey Towers', lat: 41.3300, lng: -74.8100 },
+                  { name: 'Dingmans Falls', lat: 41.2300, lng: -74.8900 }
+                ].map((place, i) => (
+                  <Card key={i} className="p-4 rounded-2xl border-4 border-[#40513B]/5 hover:border-[#40513B]/20 transition-all flex items-center justify-between group">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 bg-[#40513B]/10 rounded-xl flex items-center justify-center">
                         <MapIcon size={20} className="text-[#40513B]" />
                       </div>
-                      <span className="font-bold text-[#141414]">{place}</span>
+                      <span className="font-bold text-[#141414]">{place.name}</span>
                     </div>
-                    <ChevronRight size={18} className="text-[#40513B]/30" />
+                    <Button 
+                      size="sm"
+                      variant="ghost"
+                      className="rounded-xl text-[10px] font-black uppercase tracking-widest text-[#40513B] hover:bg-[#40513B] hover:text-white transition-all"
+                      onClick={() => startNavigation([place.lat, place.lng])}
+                    >
+                      Go <ChevronRight size={14} className="ml-1" />
+                    </Button>
                   </Card>
                 ))}
               </div>
@@ -298,6 +378,7 @@ export default function App() {
               points={MOCK_POINTS}
               carLocation={carLocation}
               carHeading={carHeading}
+              themeColors={currentTheme.colors.map}
             />
             <NavigationOverlay 
               currentStep={route[currentStepIndex]}
@@ -312,16 +393,16 @@ export default function App() {
                 setWildlifeReports(prev => [...prev, report]);
               }}
             />
-            <div className="absolute top-6 left-6 pointer-events-auto">
+            <div className="absolute top-6 left-6 pointer-events-auto flex gap-2">
               <Button 
                 variant="secondary" 
-                className="rounded-2xl border-4 border-[#40513B]/10 bg-white/90 backdrop-blur font-black uppercase text-xs tracking-widest"
+                className="rounded-2xl border-4 border-[#40513B]/10 bg-white/90 backdrop-blur font-black uppercase text-xs tracking-widest flex items-center gap-2"
                 onClick={() => {
                   setIsNavigating(false);
                   setScreen('home');
                 }}
               >
-                Exit
+                <XCircle size={18} className="text-red-500" /> End Navigation
               </Button>
             </div>
           </div>
@@ -340,27 +421,145 @@ export default function App() {
               <h2 className="text-2xl font-black">Plan Your Route</h2>
             </div>
             <USSearch 
-              onSelect={(lat, lng, label) => startNavigation([lat, lng])} 
+              onSelect={(lat, lng, label) => startNavigation([lat, lng], label)} 
               userLocation={userLocation || carLocation}
               searchRadius={searchRadius}
               onRadiusChange={setSearchRadius}
             />
+
+            {(navHistory.length > 0 || favorites.length > 0) && (
+              <div className="mt-8 space-y-6">
+                {favorites.length > 0 && (
+                  <div>
+                    <h3 className="font-black uppercase text-[10px] tracking-widest text-[#40513B]/50 mb-3 flex items-center gap-2">
+                      <Star size={12} className="text-yellow-500 fill-yellow-500" /> Favorite Places
+                    </h3>
+                    <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                      {favorites.map((fav, i) => (
+                        <Card 
+                          key={i} 
+                          className="p-3 rounded-2xl border-4 border-[#40513B]/5 bg-white min-w-[140px] cursor-pointer hover:border-[#40513B]/20 transition-all"
+                          onClick={() => startNavigation([fav.lat, fav.lng], fav.name)}
+                        >
+                          <p className="font-bold text-xs truncate">{fav.name}</p>
+                          <p className="text-[9px] text-[#40513B]/40 font-black uppercase mt-1">Navigate</p>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {navHistory.length > 0 && (
+                  <div>
+                    <h3 className="font-black uppercase text-[10px] tracking-widest text-[#40513B]/50 mb-3 flex items-center gap-2">
+                      <HistoryIcon size={12} /> Recent History
+                    </h3>
+                    <div className="space-y-2">
+                      {navHistory.map((item, i) => (
+                        <div 
+                          key={i} 
+                          className="flex items-center justify-between p-3 bg-white rounded-2xl border-2 border-[#40513B]/5 cursor-pointer hover:bg-[#40513B]/5 transition-all"
+                          onClick={() => startNavigation([item.lat, item.lng], item.name)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <MapPin size={14} className="text-[#40513B]/30" />
+                            <span className="text-xs font-bold">{item.name}</span>
+                          </div>
+                          <ChevronRight size={14} className="text-[#40513B]/20" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
             
             <div className="mt-12">
-              <h3 className="font-black uppercase text-xs tracking-widest text-[#40513B]/50 mb-6">Mountain Categories</h3>
-              <div className="grid grid-cols-2 gap-4">
-                {[
-                  { label: 'Scenic Overlooks', icon: <Camera />, color: 'bg-blue-100 text-blue-600' },
-                  { label: 'Hiking Trails', icon: <Wind />, color: 'bg-green-100 text-green-600' },
-                  { label: 'Cozy Cabins', icon: <HomeIcon />, color: 'bg-orange-100 text-orange-600' },
-                  { label: 'Wildlife Spots', icon: <ShieldAlert />, color: 'bg-yellow-100 text-yellow-600' },
-                ].map((cat, i) => (
-                  <Card key={i} className={`p-6 rounded-3xl border-0 shadow-md flex flex-col gap-3 ${cat.color}`}>
-                    {cat.icon}
-                    <span className="font-black text-sm leading-tight">{cat.label}</span>
-                  </Card>
-                ))}
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="font-black uppercase text-xs tracking-widest text-[#40513B]/50">
+                  {selectedCategory ? CATEGORIES.find(c => c.id === selectedCategory)?.label : 'Mountain Categories'}
+                </h3>
+                {selectedCategory && (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="text-[10px] font-black uppercase tracking-widest text-[#40513B]"
+                    onClick={() => setSelectedCategory(null)}
+                  >
+                    <ArrowLeft size={14} className="mr-1" /> Back
+                  </Button>
+                )}
               </div>
+
+              {!selectedCategory ? (
+                <div className="grid grid-cols-2 gap-4">
+                  {CATEGORIES.map((cat, i) => {
+                    const nearest = CATEGORIES.find(c => c.id === cat.id)?.data.reduce((prev, curr) => {
+                      const distPrev = getDistance(carLocation[0], carLocation[1], prev.lat, prev.lng);
+                      const distCurr = getDistance(carLocation[0], carLocation[1], curr.lat, curr.lng);
+                      return distCurr < distPrev ? prev : curr;
+                    });
+
+                    return (
+                      <Card 
+                        key={i} 
+                        className={`p-5 rounded-3xl border-0 shadow-md flex flex-col gap-3 cursor-pointer hover:scale-[1.02] transition-transform ${cat.color}`}
+                        onClick={() => setSelectedCategory(cat.id)}
+                      >
+                        <div className="flex justify-between items-start">
+                          {cat.id === 'overlooks' && <Camera />}
+                          {cat.id === 'trails' && <Wind />}
+                          {cat.id === 'cabins' && <HomeIcon />}
+                          {cat.id === 'wild' && <ShieldAlert />}
+                        </div>
+                        <span className="font-black text-sm leading-tight">{cat.label}</span>
+                        <Button 
+                          size="sm" 
+                          className="mt-2 rounded-xl bg-white/20 hover:bg-white/40 text-current border-0 font-black uppercase text-[9px] tracking-widest h-8"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (nearest) startNavigation([nearest.lat, nearest.lng]);
+                          }}
+                        >
+                          Navigate Here
+                        </Button>
+                      </Card>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2">
+                  {CATEGORIES.find(c => c.id === selectedCategory)?.data.map((loc, i) => {
+                    const isFav = favorites.some(f => f.name === loc.name);
+                    return (
+                      <Card key={i} className="p-5 rounded-3xl border-4 border-[#40513B]/5 shadow-sm bg-white">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <h4 className="font-black text-[#141414] text-lg leading-tight">{loc.name}</h4>
+                            <p className="text-[10px] font-bold text-[#40513B]/40 uppercase tracking-widest mt-1">
+                              {loc.lat.toFixed(4)}, {loc.lng.toFixed(4)}
+                            </p>
+                          </div>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className={`rounded-xl ${isFav ? 'text-red-500 bg-red-50' : 'text-[#40513B]/20'}`}
+                            onClick={() => toggleFavorite(loc)}
+                          >
+                            <Heart size={20} fill={isFav ? "currentColor" : "none"} />
+                          </Button>
+                        </div>
+                        <Button 
+                          className="w-full rounded-2xl bg-[#40513B] hover:bg-[#2D3A2A] text-white font-black uppercase text-xs tracking-widest h-12"
+                          onClick={() => startNavigation([loc.lat, loc.lng], loc.name)}
+                        >
+                          Navigate Here
+                        </Button>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </motion.div>
         );
@@ -441,6 +640,76 @@ export default function App() {
             </div>
           </motion.div>
         );
+      case 'settings':
+        return (
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="p-6 h-full bg-[#F5F5F0]"
+          >
+            <div className="flex items-center gap-4 mb-8">
+              <Button variant="ghost" className="rounded-xl" onClick={() => setScreen('home')}>
+                <HomeIcon />
+              </Button>
+              <h2 className="text-2xl font-black">Settings</h2>
+            </div>
+
+            <div className="space-y-8">
+              <section>
+                <h3 className="font-black uppercase text-xs tracking-widest text-[#40513B]/50 mb-4 flex items-center gap-2">
+                  <Palette size={14} /> Customizable Themes
+                </h3>
+                <div className="grid grid-cols-1 gap-3">
+                  {THEMES.map((theme) => (
+                    <button
+                      key={theme.id}
+                      onClick={() => setCurrentTheme(theme)}
+                      className={`p-4 rounded-2xl border-4 flex items-center justify-between transition-all ${
+                        currentTheme.id === theme.id 
+                          ? 'border-[#40513B] bg-white shadow-md' 
+                          : 'border-transparent bg-white/50 hover:bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div 
+                          className="w-8 h-8 rounded-full border-2 border-black/10" 
+                          style={{ backgroundColor: theme.colors.primary }}
+                        />
+                        <span className="font-bold text-sm">{theme.name}</span>
+                      </div>
+                      {currentTheme.id === theme.id && <Check size={18} className="text-[#40513B]" />}
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="font-black uppercase text-xs tracking-widest text-[#40513B]/50 mb-4">App Preferences</h3>
+                <Card className="p-4 rounded-2xl border-4 border-[#40513B]/5 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-sm">Search Radius</span>
+                    <span className="text-xs font-black text-[#40513B]">{searchRadius} mi</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold text-sm">Units</span>
+                    <span className="text-xs font-black text-[#40513B]">Imperial (mi)</span>
+                  </div>
+                </Card>
+              </section>
+
+              <Button 
+                variant="outline" 
+                className="w-full h-14 rounded-2xl border-4 border-red-100 text-red-500 font-black uppercase tracking-widest hover:bg-red-50"
+                onClick={() => {
+                  localStorage.removeItem('hillhopper_search_history');
+                  alert('Search history cleared!');
+                }}
+              >
+                Clear Search History
+              </Button>
+            </div>
+          </motion.div>
+        );
       case 'location-setup':
         return (
           <motion.div 
@@ -478,27 +747,63 @@ export default function App() {
   };
 
   return (
-    <div className="fixed inset-0 bg-[#F5F5F0] font-sans text-[#141414] overflow-hidden">
-      <div className="max-w-md mx-auto h-full shadow-2xl bg-white relative">
+    <div 
+      className="fixed inset-0 font-sans overflow-hidden transition-colors duration-500"
+      style={{ 
+        backgroundColor: currentTheme.colors.background,
+        color: currentTheme.colors.text
+      }}
+    >
+      <div className="max-w-md mx-auto h-full shadow-2xl relative" style={{ backgroundColor: currentTheme.colors.card }}>
         <AnimatePresence mode="wait">
           {showOnboarding ? renderOnboarding() : renderScreen()}
         </AnimatePresence>
 
         {/* Global Navigation Bar (Only on certain screens) */}
         {['home', 'search', 'settings'].includes(screen) && (
-          <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-white via-white to-transparent">
+          <div className="absolute bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-transparent via-white/80 to-transparent">
             <Tabs value={screen} onValueChange={(v) => setScreen(v as AppScreen)} className="w-full">
-              <TabsList className="w-full h-16 bg-[#40513B]/5 border-4 border-[#40513B]/10 rounded-2xl p-1">
-                <TabsTrigger value="home" className="flex-1 rounded-xl data-[state=active]:bg-[#40513B] data-[state=active]:text-white transition-all">
+              <TabsList 
+                className="w-full h-16 border-4 rounded-2xl p-1 transition-all"
+                style={{ 
+                  backgroundColor: `${currentTheme.colors.primary}10`,
+                  borderColor: `${currentTheme.colors.primary}20`
+                }}
+              >
+                <TabsTrigger 
+                  value="home" 
+                  className="flex-1 rounded-xl transition-all data-[state=active]:text-white"
+                  style={{ '--active-bg': currentTheme.colors.primary } as any}
+                >
                   <HomeIcon size={20} />
                 </TabsTrigger>
-                <TabsTrigger value="search" className="flex-1 rounded-xl data-[state=active]:bg-[#40513B] data-[state=active]:text-white transition-all">
+                <TabsTrigger 
+                  value="search" 
+                  className="flex-1 rounded-xl transition-all data-[state=active]:text-white"
+                  style={{ '--active-bg': currentTheme.colors.primary } as any}
+                >
                   <SearchIcon size={20} />
                 </TabsTrigger>
-                <TabsTrigger value="navigation" className="flex-1 rounded-xl data-[state=active]:bg-[#40513B] data-[state=active]:text-white transition-all" disabled={!isNavigating}>
+                <button 
+                  onClick={locateMe}
+                  className="flex-1 rounded-xl flex items-center justify-center transition-all"
+                  style={{ color: currentTheme.colors.primary }}
+                >
+                  <LocateFixed size={20} />
+                </button>
+                <TabsTrigger 
+                  value="navigation" 
+                  className="flex-1 rounded-xl transition-all data-[state=active]:text-white"
+                  disabled={!isNavigating}
+                  style={{ '--active-bg': currentTheme.colors.primary } as any}
+                >
                   <NavIcon size={20} />
                 </TabsTrigger>
-                <TabsTrigger value="settings" className="flex-1 rounded-xl data-[state=active]:bg-[#40513B] data-[state=active]:text-white transition-all">
+                <TabsTrigger 
+                  value="settings" 
+                  className="flex-1 rounded-xl transition-all data-[state=active]:text-white"
+                  style={{ '--active-bg': currentTheme.colors.primary } as any}
+                >
                   <SettingsIcon size={20} />
                 </TabsTrigger>
               </TabsList>
