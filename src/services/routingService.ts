@@ -15,27 +15,25 @@ export const getMountainRoute = async (
     }
 
     const route = data.routes[0];
+    const fullGeometry = route.geometry.coordinates; // [lng, lat][]
     const steps: RouteStep[] = [];
 
-    route.legs[0].steps.forEach((step: any) => {
-      steps.push({
-        instruction: step.maneuver.instruction,
-        distance: step.distance,
-        duration: step.duration,
-        type: step.maneuver.type === 'turn' ? 'turn' : 'straight',
-        lat: step.maneuver.location[1],
-        lng: step.maneuver.location[0]
-      });
-    });
+    // Map geometry to RouteSteps for smooth simulation
+    fullGeometry.forEach((coord: [number, number], i: number) => {
+      // Find the instruction for this segment if it's a maneuver point
+      const instruction = route.legs[0].steps.find((s: any) => 
+        Math.abs(s.maneuver.location[0] - coord[0]) < 0.0001 && 
+        Math.abs(s.maneuver.location[1] - coord[1]) < 0.0001
+      )?.maneuver.instruction || "Continue on road";
 
-    // Add final destination step
-    steps.push({
-      instruction: "Arrive at Destination",
-      distance: 0,
-      duration: 0,
-      type: 'straight',
-      lat: end[0],
-      lng: end[1]
+      steps.push({
+        instruction,
+        distance: i === 0 ? 0 : 10, // Approximate
+        duration: i === 0 ? 0 : 1, // Approximate
+        type: 'straight',
+        lat: coord[1],
+        lng: coord[0]
+      });
     });
 
     return steps;

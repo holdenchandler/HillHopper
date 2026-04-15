@@ -158,29 +158,45 @@ export const NavigationOverlay: React.FC<NavigationOverlayProps> = ({
             exit={{ x: 300, opacity: 0 }}
             className="absolute right-6 top-1/2 -translate-y-1/2 w-72 pointer-events-auto"
           >
-            <Card className={`p-4 border-4 rounded-3xl shadow-xl ${RISK_COLORS[deerRisk.level]}`}>
-              <div className="flex items-start gap-3">
-                <div className="p-2 bg-white/50 rounded-xl">
-                  <ShieldAlert size={24} />
+            <motion.div
+              animate={deerRisk.level === 'high' || deerRisk.level === 'extreme' ? {
+                scale: [1, 1.02, 1],
+                boxShadow: [
+                  "0 0 0 0px rgba(239, 68, 68, 0)",
+                  "0 0 0 10px rgba(239, 68, 68, 0.1)",
+                  "0 0 0 0px rgba(239, 68, 68, 0)"
+                ]
+              } : {}}
+              transition={{
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut"
+              }}
+            >
+              <Card className={`p-4 border-4 rounded-3xl shadow-xl ${RISK_COLORS[deerRisk.level]}`}>
+                <div className="flex items-start gap-3">
+                  <div className="p-2 bg-white/50 rounded-xl">
+                    <ShieldAlert size={24} />
+                  </div>
+                  <div>
+                    <h3 className="font-black uppercase text-sm tracking-tighter">Deer Risk: {deerRisk.level}</h3>
+                    <p className="text-xs font-medium mt-1 leading-relaxed">{deerRisk.reason}</p>
+                    <p className="text-[10px] italic mt-2 opacity-70">"Keep those eyes peeled, Hopper!" 🦌</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-black uppercase text-sm tracking-tighter">Deer Risk: {deerRisk.level}</h3>
-                  <p className="text-xs font-medium mt-1 leading-relaxed">{deerRisk.reason}</p>
-                  <p className="text-[10px] italic mt-2 opacity-70">"Keep those eyes peeled, Hopper!" 🦌</p>
+                
+                {/* Animated Forest Edge Indicator */}
+                <div className="mt-3 h-2 w-full bg-black/5 rounded-full overflow-hidden">
+                  <motion.div
+                    animate={{ x: ['-100%', '100%'] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                    className={`h-full w-1/3 blur-sm ${
+                      deerRisk.level === 'extreme' ? 'bg-red-500' : 'bg-orange-400'
+                    }`}
+                  />
                 </div>
-              </div>
-              
-              {/* Animated Forest Edge Indicator */}
-              <div className="mt-3 h-2 w-full bg-black/5 rounded-full overflow-hidden">
-                <motion.div
-                  animate={{ x: ['-100%', '100%'] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                  className={`h-full w-1/3 blur-sm ${
-                    deerRisk.level === 'extreme' ? 'bg-red-500' : 'bg-orange-400'
-                  }`}
-                />
-              </div>
-            </Card>
+              </Card>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

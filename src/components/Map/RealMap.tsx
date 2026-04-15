@@ -73,7 +73,20 @@ export const RealMap: React.FC<RealMapProps> = ({
         
         {/* Route */}
         {routePath.length > 1 && (
-          <Polyline positions={routePath} color="#40513B" weight={5} opacity={0.7} dashArray="10, 10" />
+          <>
+            <Polyline positions={routePath} color="#40513B" weight={8} opacity={0.3} />
+            <Polyline positions={routePath} color="#40513B" weight={4} opacity={0.8} dashArray="1, 15" />
+            {/* Destination Marker */}
+            <Marker 
+              position={routePath[routePath.length - 1]} 
+              icon={L.divIcon({
+                className: 'dest-icon',
+                html: `<div style="font-size: 30px; filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.5));">📍</div>`,
+                iconSize: [30, 30],
+                iconAnchor: [15, 30]
+              })}
+            />
+          </>
         )}
 
         {/* Car */}

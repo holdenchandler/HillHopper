@@ -2,7 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import * as d3 from 'd3';
 import { motion, AnimatePresence } from 'motion/react';
 import { DeerZone, MountainPoint, WildlifeReport, WildlifeType, RouteStep } from '../../lib/types';
-import { Trees as TreeIcon, Mountain as MountainIcon, Tent, Camera, AlertTriangle, Skull } from 'lucide-react';
+import { Trees as TreeIcon, Mountain as MountainIcon, Tent, Camera, AlertTriangle, Skull, MapPin } from 'lucide-react';
 
 interface CartoonMapProps {
   center: [number, number];
@@ -126,20 +126,54 @@ export const CartoonMap: React.FC<CartoonMapProps> = ({
           })}
         </g>
 
-        {/* Route Path */}
+        {/* Route Path (Travel Line) */}
         {route.length > 1 && (
-          <path
-            d={d3.line<RouteStep>()
-              .x(d => projection([d.lng, d.lat])?.[0] || 0)
-              .y(d => projection([d.lng, d.lat])?.[1] || 0)
-              .curve(d3.curveBasis)(route.filter(r => typeof r.lat === 'number' && typeof r.lng === 'number')) || ''}
-            fill="none"
-            stroke={themeColors.road}
-            strokeWidth="16"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="opacity-40"
-          />
+          <g>
+            {/* Outer Glow/Shadow */}
+            <path
+              d={d3.line<RouteStep>()
+                .x(d => projection([d.lng, d.lat])?.[0] || 0)
+                .y(d => projection([d.lng, d.lat])?.[1] || 0)
+                .curve(d3.curveBasis)(route.filter(r => typeof r.lat === 'number' && typeof r.lng === 'number')) || ''}
+              fill="none"
+              stroke={themeColors.road}
+              strokeWidth="24"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="opacity-20"
+            />
+            {/* Main Path */}
+            <path
+              d={d3.line<RouteStep>()
+                .x(d => projection([d.lng, d.lat])?.[0] || 0)
+                .y(d => projection([d.lng, d.lat])?.[1] || 0)
+                .curve(d3.curveBasis)(route.filter(r => typeof r.lat === 'number' && typeof r.lng === 'number')) || ''}
+              fill="none"
+              stroke={themeColors.road}
+              strokeWidth="12"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="1, 20"
+              className="opacity-80"
+            />
+            {/* Destination Marker */}
+            {(() => {
+              const last = route[route.length - 1];
+              const [x, y] = projection([last.lng, last.lat]) || [0, 0];
+              return (
+                <g transform={`translate(${x}, ${y})`}>
+                  <motion.circle
+                    r="12"
+                    fill="#EF4444"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ repeat: Infinity, duration: 2 }}
+                  />
+                  <MapPin size={16} className="text-white -translate-x-2 -translate-y-4" />
+                </g>
+              );
+            })()}
+          </g>
         )}
 
         {/* Roads (Simulated - now only if no route) */}

@@ -328,10 +328,18 @@ export const USSearch: React.FC<USSearchProps> = ({
           >
             <Card className="bg-white/95 backdrop-blur shadow-2xl border-4 border-[#40513B]/20 rounded-2xl overflow-hidden">
               {results.map((res, i) => (
-                <button
+                <div
                   key={i}
                   onClick={() => handleSelect(res)}
-                  className="w-full p-4 flex items-start gap-3 hover:bg-[#40513B]/5 transition-colors text-left border-b border-[#40513B]/10 last:border-0"
+                  className="w-full p-4 flex items-start gap-3 hover:bg-[#40513B]/5 transition-colors text-left border-b border-[#40513B]/10 last:border-0 cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleSelect(res);
+                    }
+                  }}
                 >
                   <MapPin size={18} className="text-[#40513B]/40 mt-1 shrink-0" />
                   <div className="flex-1">
@@ -345,7 +353,7 @@ export const USSearch: React.FC<USSearchProps> = ({
                       {res.distance.toFixed(1)} mi
                     </span>
                   )}
-                </button>
+                </div>
               ))}
             </Card>
           </motion.div>
@@ -369,10 +377,18 @@ export const USSearch: React.FC<USSearchProps> = ({
                 </button>
               </div>
               {history.map((res, i) => (
-                <button
+                <div
                   key={res.id || i}
                   onClick={() => handleSelect(res)}
-                  className="w-full p-4 flex items-start gap-3 hover:bg-[#40513B]/5 transition-colors text-left border-b border-[#40513B]/10 last:border-0 group"
+                  className="w-full p-4 flex items-start gap-3 hover:bg-[#40513B]/5 transition-colors text-left border-b border-[#40513B]/10 last:border-0 group cursor-pointer"
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleSelect(res);
+                    }
+                  }}
                 >
                   <History size={18} className="text-[#40513B]/40 mt-1 shrink-0" />
                   <div className="flex-1">
@@ -384,10 +400,11 @@ export const USSearch: React.FC<USSearchProps> = ({
                   <button
                     onClick={(e) => removeFromHistory(e, res.id)}
                     className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-50 rounded-full transition-all"
+                    aria-label="Remove from history"
                   >
                     <X size={14} className="text-red-400" />
                   </button>
-                </button>
+                </div>
               ))}
             </Card>
           </motion.div>

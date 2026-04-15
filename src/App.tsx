@@ -44,7 +44,7 @@ import { Card } from './components/ui/card';
 import { Badge } from './components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
 
-type AppScreen = 'home' | 'navigation' | 'search' | 'settings' | 'hazards' | 'location-setup';
+type AppScreen = 'home' | 'navigation' | 'search' | 'settings' | 'hazards';
 
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>('home');
@@ -58,19 +58,34 @@ export default function App() {
     carLocationRef.current = carLocation;
   }, [carLocation]);
 
+  // Auto-activate GPS on mount
+  useEffect(() => {
+    locateMe();
+  }, []);
+
   const [carHeading, setCarHeading] = useState(45);
   const [searchRadius, setSearchRadius] = useState(25);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [currentTheme, setCurrentTheme] = useState<Theme>(THEMES[0]);
   const [favorites, setFavorites] = useState<CategoryLocation[]>([]);
   const [navHistory, setNavHistory] = useState<CategoryLocation[]>([]);
-  const [locationStatus, setLocationStatus] = useState<'pending' | 'active' | 'denied'>('pending');
+  const [locationStatus, setLocationStatus] = useState<'pending' | 'active' | 'denied'>('active');
   const [deerRisk, setDeerRisk] = useState<{ level: RiskLevel; reason: string }>({ level: 'low', reason: '' });
   const [deerZones, setDeerZones] = useState<DeerZone[]>([]);
   const [wildlifeReports, setWildlifeReports] = useState<WildlifeReport[]>([]);
   const [route, setRoute] = useState<RouteStep[]>([]);
-  const [showOnboarding, setShowOnboarding] = useState(true);
+  const [previewRoute, setPreviewRoute] = useState<RouteStep[] | null>(null);
+  const [previewDestination, setPreviewDestination] = useState<{lat: number, lng: number, label: string} | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [isPreloading, setIsPreloading] = useState(false);
+  const [isPreloaded, setIsPreloaded] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<{ text: string, type: 'info' | 'error' | 'success' } | null>(null);
   const [onboardingStep, setOnboardingStep] = useState(0);
+
+  const showStatus = (text: string, type: 'info' | 'error' | 'success' = 'info') => {
+    setStatusMessage({ text, type });
+    setTimeout(() => setStatusMessage(null), 4000);
+  };
 
   const ONBOARDING_STEPS = [
     {
@@ -176,12 +191,11 @@ export default function App() {
         (error) => {
           console.error("Geolocation error:", error);
           setLocationStatus('denied');
-          setScreen('location-setup');
+          // Don't set screen to location-setup as it's removed
         }
       );
     } else {
       setLocationStatus('denied');
-      setScreen('location-setup');
     }
   };
 
@@ -254,7 +268,7 @@ export default function App() {
             return prev;
           }
         });
-      }, 2000); // Advance every 2 seconds for demo
+      }, 800); // Advance every 800ms for smoother road following
     }
     return () => clearInterval(interval);
   }, [isNavigating, route]);
@@ -265,6 +279,8 @@ export default function App() {
       const newRoute = await getMountainRoute(carLocation, dest);
       console.log("Route calculated:", newRoute);
       setRoute(newRoute);
+      setPreviewRoute(null);
+      setPreviewDestination(null);
       setCurrentStepIndex(0);
       setIsNavigating(true);
       setScreen('navigation');
@@ -278,6 +294,17 @@ export default function App() {
       }
     } catch (error) {
       console.error("Load failed", error);
+    }
+  };
+
+  const showPreview = async (dest: [number, number], label: string) => {
+    try {
+      const newRoute = await getMountainRoute(carLocation, dest);
+      setPreviewRoute(newRoute);
+      setPreviewDestination({ lat: dest[0], lng: dest[1], label });
+      setScreen('home');
+    } catch (error) {
+      console.error("Preview failed", error);
     }
   };
 
@@ -299,29 +326,33 @@ export default function App() {
           setCarLocation([latitude, longitude]);
           setUserLocation([latitude, longitude]);
           setLocationStatus('active');
+          showStatus("GPS Activated! Your location has been updated.", "success");
         },
         (error) => {
           console.error("Locate me failed:", error);
+          showStatus("Could not access GPS. Please check your device settings.", "error");
         }
       );
     }
   };
 
-  const renderScreen = () => {
-    if (locationStatus === 'pending' && !showOnboarding) {
-      return (
-        <div className="flex flex-col items-center justify-center h-full gap-4">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-          >
-            <Compass size={48} className="text-[#40513B]" />
-          </motion.div>
-          <p className="text-[#40513B] font-black uppercase text-xs tracking-widest">Finding your mountain...</p>
-        </div>
-      );
+  const preloadPikeCounty = () => {
+    if (isPreloaded) {
+      setCarLocation([41.3242, -74.8018]);
+      showStatus("Centered map on Pike County", "info");
+      return;
     }
+    setIsPreloading(true);
+    // Simulate downloading/caching maps
+    setTimeout(() => {
+      setIsPreloading(false);
+      setIsPreloaded(true);
+      setCarLocation([41.3242, -74.8018]); // Center on Milford
+      showStatus("Pike County Maps pre-installed for offline use!", "success");
+    }, 2000);
+  };
 
+  const renderScreen = () => {
     switch (screen) {
       case 'home':
         return (
@@ -396,7 +427,112 @@ export default function App() {
               </Button>
             </div>
 
-            <div className="flex-1 overflow-hidden">
+            <div className="flex justify-center gap-4">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => setScreen('search')}
+                className="text-[10px] font-black uppercase tracking-widest text-[#40513B]/40 hover:text-[#40513B]"
+              >
+                <MapPin size={12} className="mr-1" /> ZIP Code
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={locateMe}
+                className="text-[10px] font-black uppercase tracking-widest text-blue-500 hover:text-blue-600"
+              >
+                <LocateFixed size={12} className="mr-1" /> Activate GPS
+              </Button>
+            </div>
+
+            <Card 
+              onClick={preloadPikeCounty}
+              className={`border-4 rounded-[2rem] p-4 flex items-center justify-between shadow-sm cursor-pointer transition-all active:scale-95 ${isPreloaded ? 'bg-green-50 border-green-200' : 'bg-white border-[#40513B]/10'}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${isPreloaded ? 'bg-green-100 text-green-600' : 'bg-[#40513B]/5 text-[#40513B]/40'}`}>
+                  <MapIcon size={20} />
+                </div>
+                <div>
+                  <h4 className="font-black uppercase text-[10px] tracking-widest">Pike County Maps</h4>
+                  <p className="text-[9px] font-bold text-[#40513B]/40 uppercase">{isPreloaded ? 'Pre-installed' : 'Not installed'}</p>
+                </div>
+              </div>
+              <Button 
+                size="sm" 
+                variant={isPreloaded ? "ghost" : "outline"}
+                disabled={isPreloading}
+                className="rounded-xl font-black uppercase text-[10px] tracking-widest px-4 h-10 pointer-events-none"
+              >
+                {isPreloading ? 'Installing...' : isPreloaded ? 'Ready' : 'Install'}
+              </Button>
+            </Card>
+
+            {/* Map Preview Area */}
+            <div className="flex-1 relative rounded-[2.5rem] overflow-hidden border-4 border-[#40513B]/10 shadow-inner bg-[#F5F5F0]">
+              {mapType === 'cartoon' ? (
+                <CartoonMap 
+                  center={carLocation}
+                  zoom={12}
+                  deerZones={deerZones}
+                  wildlifeReports={wildlifeReports}
+                  points={MOCK_POINTS}
+                  carLocation={carLocation}
+                  carHeading={carHeading}
+                  route={previewRoute || []}
+                  themeColors={currentTheme.colors.map}
+                />
+              ) : (
+                <RealMap 
+                  center={carLocation}
+                  zoom={12}
+                  carLocation={carLocation}
+                  carHeading={carHeading}
+                  route={previewRoute || []}
+                  deerZones={deerZones}
+                  wildlifeReports={wildlifeReports}
+                  points={MOCK_POINTS}
+                />
+              )}
+
+              {previewRoute && previewDestination && (
+                <motion.div 
+                  initial={{ y: 50, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  className="absolute bottom-4 left-4 right-4 z-10"
+                >
+                  <Card className="p-4 rounded-3xl border-4 border-[#40513B]/20 bg-white/95 backdrop-blur shadow-2xl flex items-center justify-between">
+                    <div className="flex-1 min-w-0 mr-4">
+                      <p className="text-[10px] font-black uppercase text-[#40513B]/50 tracking-widest">Previewing Route to</p>
+                      <h4 className="font-black text-sm truncate">{previewDestination.label}</h4>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="rounded-xl font-black uppercase text-[10px] tracking-widest"
+                        onClick={() => {
+                          setPreviewRoute(null);
+                          setPreviewDestination(null);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        className="rounded-xl bg-[#40513B] text-white font-black uppercase text-[10px] tracking-widest px-4"
+                        onClick={() => startNavigation([previewDestination.lat, previewDestination.lng], previewDestination.label)}
+                      >
+                        Start
+                      </Button>
+                    </div>
+                  </Card>
+                </motion.div>
+              )}
+            </div>
+
+            <div className="overflow-hidden">
               <h3 className="font-black uppercase text-xs tracking-widest text-[#40513B]/50 mb-4">Recent Adventures</h3>
               <div className="space-y-3 overflow-y-auto max-h-[30vh] pr-2">
                 {[
@@ -522,6 +658,9 @@ export default function App() {
                   searchRadius={searchRadius}
                   onRadiusChange={setSearchRadius}
                 />
+                <div className="mt-4 text-center">
+                  <p className="text-[10px] font-black uppercase text-[#40513B]/40 tracking-widest">Tip: Selecting a result starts navigation immediately</p>
+                </div>
               </div>
               <Button 
                 onClick={() => setScreen('home')}
@@ -544,7 +683,7 @@ export default function App() {
                         <Card 
                           key={i} 
                           className="p-3 rounded-2xl border-4 border-[#40513B]/5 bg-white min-w-[140px] cursor-pointer hover:border-[#40513B]/20 transition-all"
-                          onClick={() => startNavigation([fav.lat, fav.lng], fav.name)}
+                          onClick={() => showPreview([fav.lat, fav.lng], fav.name)}
                         >
                           <p className="font-bold text-xs truncate">{fav.name}</p>
                           <p className="text-[9px] text-[#40513B]/40 font-black uppercase mt-1">Navigate</p>
@@ -564,7 +703,7 @@ export default function App() {
                         <div 
                           key={i} 
                           className="flex items-center justify-between p-3 bg-white rounded-2xl border-2 border-[#40513B]/5 cursor-pointer hover:bg-[#40513B]/5 transition-all"
-                          onClick={() => startNavigation([item.lat, item.lng], item.name)}
+                          onClick={() => showPreview([item.lat, item.lng], item.name)}
                         >
                           <div className="flex items-center gap-3">
                             <MapPin size={14} className="text-[#40513B]/30" />
@@ -656,9 +795,9 @@ export default function App() {
                         </div>
                         <Button 
                           className="w-full rounded-2xl bg-[#40513B] hover:bg-[#2D3A2A] text-white font-black uppercase text-xs tracking-widest h-12"
-                          onClick={() => startNavigation([loc.lat, loc.lng], loc.name)}
+                          onClick={() => showPreview([loc.lat, loc.lng], loc.name)}
                         >
-                          Navigate Here
+                          Preview Route
                         </Button>
                       </Card>
                     );
@@ -815,37 +954,6 @@ export default function App() {
             </div>
           </motion.div>
         );
-      case 'location-setup':
-        return (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="p-8 h-full flex flex-col items-center justify-center text-center gap-8"
-          >
-            <div className="w-24 h-24 bg-[#40513B]/10 rounded-full flex items-center justify-center">
-              <MapPin size={48} className="text-[#40513B]" />
-            </div>
-            <div>
-              <h2 className="text-3xl font-black mb-4">Where are you, Hopper?</h2>
-              <p className="text-[#40513B]/60 font-medium leading-relaxed">
-                We couldn't find your GPS. Please enter your ZIP code or nearest town to anchor your mountain adventure.
-              </p>
-            </div>
-            <div className="w-full space-y-4">
-              <USSearch 
-                onSelect={(lat, lng) => {
-                  setUserLocation([lat, lng]);
-                  setCarLocation([lat, lng]);
-                  setLocationStatus('active');
-                  setScreen('home');
-                }}
-                userLocation={null}
-                searchRadius={100} // Wide search for anchor
-                placeholder="ZIP or Town (e.g. 18337, Milford)"
-              />
-            </div>
-          </motion.div>
-        );
       default:
         return null;
     }
@@ -862,6 +970,33 @@ export default function App() {
       <div className="max-w-md mx-auto h-full shadow-2xl relative" style={{ backgroundColor: currentTheme.colors.card }}>
         <AnimatePresence mode="wait">
           {showOnboarding ? renderOnboarding() : renderScreen()}
+        </AnimatePresence>
+
+        {/* Global Status Toast */}
+        <AnimatePresence>
+          {statusMessage && (
+            <motion.div
+              initial={{ y: 100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 100, opacity: 0 }}
+              className="absolute bottom-24 left-6 right-6 z-[100]"
+            >
+              <div className={`p-4 rounded-2xl shadow-2xl border-2 flex items-center gap-3 ${
+                statusMessage.type === 'error' ? 'bg-red-50 border-red-200 text-red-700' :
+                statusMessage.type === 'success' ? 'bg-green-50 border-green-200 text-green-700' :
+                'bg-blue-50 border-blue-200 text-blue-700'
+              }`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                  statusMessage.type === 'error' ? 'bg-red-100' :
+                  statusMessage.type === 'success' ? 'bg-green-100' :
+                  'bg-blue-100'
+                }`}>
+                  {statusMessage.type === 'error' ? <AlertTriangle size={16} /> : <MapPin size={16} />}
+                </div>
+                <p className="text-xs font-black uppercase tracking-tight">{statusMessage.text}</p>
+              </div>
+            </motion.div>
+          )}
         </AnimatePresence>
 
         {/* Global Navigation Bar (Only on certain screens) */}
