@@ -38,13 +38,26 @@ import { CartoonMap } from './components/Map/CartoonMap';
 import { RealMap } from './components/Map/RealMap';
 import { NavigationOverlay } from './components/Navigation/NavigationOverlay';
 import { USSearch } from './components/Search/USSearch';
-import { calculateWildlifeRisk, getWildlifeZones, createWildlifeReport } from './services/deerService';
+import { calculateWildlifeRisk, getWildlifeZones } from './services/deerService';
 import { getMountainRoute } from './services/routingService';
 import { RiskLevel, RouteStep, DeerZone, MountainPoint, WildlifeReport, WildlifeType } from './lib/types';
 import { Button } from './components/ui/button';
 import { Card } from './components/ui/card';
 import { Badge } from './components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from './components/ui/tabs';
+import { auth, db, signInWithGoogle, logout } from './firebase';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { 
+  collection, 
+  onSnapshot, 
+  addDoc, 
+  query, 
+  where, 
+  Timestamp,
+  doc,
+  setDoc,
+  getDoc
+} from 'firebase/firestore';
 
 type AppScreen = 'home' | 'navigation' | 'search' | 'settings' | 'hazards';
 
@@ -56,14 +69,87 @@ export default function App() {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [carLocation, setCarLocation] = useState<[number, number]>([41.3242, -74.8018]); // Default to Milford, PA
   const carLocationRef = useRef<[number, number]>(carLocation);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const watchIdRef = useRef<number | null>(null);
   
   useEffect(() => {
     carLocationRef.current = carLocation;
   }, [carLocation]);
 
-  // Auto-activate GPS on mount
+  // Firebase Auth Listener
   useEffect(() => {
-    locateMe();
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setUser(firebaseUser);
+      setIsAuthReady(true);
+      
+      if (firebaseUser) {
+        // Sync user profile to Firestore
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        const userSnap = await getDoc(userRef);
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
+            role: 'user'
+          });
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Real-time Wildlife Reports Listener
+  useEffect(() => {
+    if (!isAuthReady) return;
+
+    const reportsRef = collection(db, 'wildlife_reports');
+    // Only show reports that haven't expired
+    const q = query(reportsRef, where('expiresAt', '>', Date.now()));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const reports: WildlifeReport[] = [];
+      snapshot.forEach((doc) => {
+        reports.push({ id: doc.id, ...doc.data() } as WildlifeReport);
+      });
+      setWildlifeReports(reports);
+    }, (error) => {
+      console.error("Firestore reports listener error:", error);
+    });
+
+    return () => unsubscribe();
+  }, [isAuthReady]);
+
+  // Real GPS Tracking
+  useEffect(() => {
+    if ("geolocation" in navigator) {
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (position) => {
+          const { latitude, longitude, heading } = position.coords;
+          const newLoc: [number, number] = [latitude, longitude];
+          
+          setCarLocation(newLoc);
+          setUserLocation(newLoc);
+          setLocationStatus('active');
+          
+          if (heading !== null) {
+            setCarHeading(heading);
+          }
+        },
+        (error) => {
+          console.error("GPS Watch error:", error);
+          setLocationStatus('denied');
+        },
+        { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+      );
+    }
+
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
   }, []);
 
   const [carHeading, setCarHeading] = useState(45);
@@ -83,6 +169,7 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [downloadedCounties, setDownloadedCounties] = useState<string[]>(['Pike County, PA']);
   const [isPreloadingMap, setIsPreloadingMap] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
   const [mapSearchQuery, setMapSearchQuery] = useState('');
   const [statusMessage, setStatusMessage] = useState<{ text: string, type: 'info' | 'error' | 'success' } | null>(null);
   const [onboardingStep, setOnboardingStep] = useState(0);
@@ -358,11 +445,20 @@ export default function App() {
       return;
     }
     setIsPreloadingMap(county);
-    setTimeout(() => {
-      setDownloadedCounties(prev => [...prev, county]);
-      setIsPreloadingMap(null);
-      showStatus(`${county} maps installed for offline use!`, "success");
-    }, 2000);
+    setDownloadProgress(prev => ({ ...prev, [county]: 0 }));
+    
+    let progress = 0;
+    const interval = setInterval(() => {
+      progress += Math.random() * 15;
+      if (progress >= 100) {
+        progress = 100;
+        clearInterval(interval);
+        setDownloadedCounties(prev => [...prev, county]);
+        setIsPreloadingMap(null);
+        showStatus(`${county} maps installed for offline use!`, "success");
+      }
+      setDownloadProgress(prev => ({ ...prev, [county]: Math.floor(progress) }));
+    }, 300);
   };
 
   const renderScreen = () => {
@@ -382,9 +478,20 @@ export default function App() {
                 </h1>
                 <p className="text-[#40513B]/60 font-bold uppercase text-xs tracking-widest mt-1">Milford, Pennsylvania</p>
               </div>
-              <Button variant="outline" size="icon" className="rounded-2xl border-4 border-[#40513B]/10" onClick={() => setScreen('settings')}>
-                <SettingsIcon />
-              </Button>
+              <div className="flex gap-2">
+                {user ? (
+                  <Button variant="outline" size="icon" className="rounded-2xl border-4 border-[#40513B]/10 overflow-hidden" onClick={() => setScreen('settings')}>
+                    <img src={user.photoURL || ''} alt="Profile" className="w-full h-full object-cover" />
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="sm" className="rounded-2xl border-4 border-[#40513B]/10 font-black uppercase text-[10px] tracking-widest" onClick={signInWithGoogle}>
+                    Sign In
+                  </Button>
+                )}
+                <Button variant="outline" size="icon" className="rounded-2xl border-4 border-[#40513B]/10" onClick={() => setScreen('settings')}>
+                  <SettingsIcon />
+                </Button>
+              </div>
             </div>
 
             <Card className="bg-gradient-to-br from-[#40513B] to-[#2D3A2A] text-white p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden border-0 min-h-[280px] flex flex-col justify-center">
@@ -601,6 +708,7 @@ export default function App() {
                   .map((county, i) => {
                     const isDownloaded = downloadedCounties.includes(county);
                     const isDownloading = isPreloadingMap === county;
+                    const progress = downloadProgress[county] || 0;
                     return (
                       <Card 
                         key={i} 
@@ -612,6 +720,23 @@ export default function App() {
                           </div>
                           <span className="text-[10px] font-bold truncate">{county}</span>
                         </div>
+                        
+                        {isDownloading && (
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-[8px] font-black uppercase text-[#40513B]/40">
+                              <span>Downloading...</span>
+                              <span>{progress}%</span>
+                            </div>
+                            <div className="h-1 w-full bg-[#40513B]/5 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }}
+                                animate={{ width: `${progress}%` }}
+                                className="h-full bg-[#40513B]"
+                              />
+                            </div>
+                          </div>
+                        )}
+
                         <Button 
                           size="sm"
                           variant={isDownloaded ? "ghost" : "default"}
@@ -619,7 +744,16 @@ export default function App() {
                           onClick={() => downloadCounty(county)}
                           className={`h-7 rounded-lg font-black uppercase text-[8px] tracking-widest ${isDownloaded ? 'text-green-600' : 'bg-[#40513B] text-white'}`}
                         >
-                          {isDownloading ? '...' : isDownloaded ? (
+                          {isDownloading ? (
+                            <span className="flex items-center gap-1">
+                              <motion.div 
+                                animate={{ rotate: 360 }}
+                                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                                className="w-2 h-2 border border-white border-t-transparent rounded-full"
+                              />
+                              Wait
+                            </span>
+                          ) : isDownloaded ? (
                             <span className="flex items-center gap-1"><Check size={10} /> Installed</span>
                           ) : (
                             <span className="flex items-center gap-1"><Download size={10} /> Download</span>
@@ -684,9 +818,29 @@ export default function App() {
                 carLocation={carLocation}
                 eta="4:45 PM"
                 distanceRemaining="12.4 mi"
-                onReportHazard={(type) => {
-                  const report = createWildlifeReport(carLocation[0], carLocation[1], type);
-                  setWildlifeReports(prev => [...prev, report]);
+                onReportHazard={async (type) => {
+                  if (!user) {
+                    showStatus("Please sign in to report hazards", "info");
+                    return;
+                  }
+                  
+                  try {
+                    const now = Date.now();
+                    const reportData = {
+                      lat: carLocation[0],
+                      lng: carLocation[1],
+                      type,
+                      timestamp: now,
+                      expiresAt: now + (2 * 60 * 60 * 1000), // 2 hours
+                      reportCount: 1,
+                      uid: user.uid
+                    };
+                    await addDoc(collection(db, 'wildlife_reports'), reportData);
+                    showStatus(`${type} reported! Thanks for helping the community.`, "success");
+                  } catch (error) {
+                    console.error("Failed to report hazard:", error);
+                    showStatus("Failed to share report. Check your connection.", "error");
+                  }
                 }}
               />
               <div className="absolute top-6 left-6 pointer-events-auto flex gap-2">
@@ -937,10 +1091,38 @@ export default function App() {
                   key={h.id}
                   className={`h-28 rounded-3xl border-4 flex items-center justify-start px-6 gap-6 ${h.color} hover:scale-[1.02] transition-transform shadow-sm`}
                   variant="outline"
-                  onClick={() => {
-                    const report = createWildlifeReport(carLocation[0], carLocation[1], h.id as WildlifeType);
-                    setWildlifeReports(prev => [...prev, report]);
-                    setScreen('navigation');
+                  onClick={async () => {
+                    if (!user) {
+                      showStatus("Please sign in to report hazards", "info");
+                      return;
+                    }
+                    
+                    try {
+                      const now = Date.now();
+                      const durations: Record<WildlifeType, number> = {
+                        'deer-live': 4 * 60 * 60 * 1000,
+                        'deer-dead': 48 * 60 * 60 * 1000,
+                        'raccoon': 24 * 60 * 60 * 1000,
+                        'squirrel': 12 * 60 * 60 * 1000,
+                        'bear': 12 * 60 * 60 * 1000
+                      };
+                      
+                      const reportData = {
+                        lat: carLocation[0],
+                        lng: carLocation[1],
+                        type: h.id as WildlifeType,
+                        timestamp: now,
+                        expiresAt: now + durations[h.id as WildlifeType],
+                        reportCount: 1,
+                        uid: user.uid
+                      };
+                      await addDoc(collection(db, 'wildlife_reports'), reportData);
+                      showStatus(`${h.label} reported! Thanks for helping the community.`, "success");
+                      setScreen(isNavigating ? 'navigation' : 'home');
+                    } catch (error) {
+                      console.error("Failed to report hazard:", error);
+                      showStatus("Failed to share report. Check your connection.", "error");
+                    }
                   }}
                 >
                   <span className="text-4xl">{h.icon}</span>
@@ -1039,12 +1221,34 @@ export default function App() {
                 </Card>
               </section>
 
+              <section>
+                <h3 className="font-black uppercase text-xs tracking-widest text-[#40513B]/50 mb-4">Account</h3>
+                {user ? (
+                  <Card className="p-4 rounded-2xl border-4 border-[#40513B]/5 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <img src={user.photoURL || ''} alt="Profile" className="w-10 h-10 rounded-full" />
+                      <div>
+                        <p className="font-bold text-sm">{user.displayName}</p>
+                        <p className="text-[10px] text-[#40513B]/40">{user.email}</p>
+                      </div>
+                    </div>
+                    <Button variant="ghost" size="sm" className="text-red-500 font-black uppercase text-[10px]" onClick={logout}>
+                      Sign Out
+                    </Button>
+                  </Card>
+                ) : (
+                  <Button className="w-full h-14 rounded-2xl bg-[#40513B] text-white font-black uppercase tracking-widest" onClick={signInWithGoogle}>
+                    Sign In with Google
+                  </Button>
+                )}
+              </section>
+
               <Button 
                 variant="outline" 
                 className="w-full h-14 rounded-2xl border-4 border-red-100 text-red-500 font-black uppercase tracking-widest hover:bg-red-50"
                 onClick={() => {
                   localStorage.removeItem('hillhopper_search_history');
-                  alert('Search history cleared!');
+                  showStatus('Search history cleared!', 'success');
                 }}
               >
                 Clear Search History

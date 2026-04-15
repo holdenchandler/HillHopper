@@ -1,0 +1,116 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: wildlife_reports
+// Document ID: auto-generated
+// Fields:
+//   - lat: number (required) - Latitude
+//   - lng: number (required) - Longitude
+//   - type: string (required, enum) - Type of wildlife
+//   - timestamp: number (required) - Creation time
+//   - expiresAt: number (required) - Expiration time
+//   - reportCount: number (required) - Confirmation count
+//   - uid: string (required) - Creator UID
+//
+// Collection: users
+// Document ID: userId (auth.uid)
+// Fields:
+//   - displayName: string (optional)
+//   - email: string (required)
+//   - photoURL: string (optional)
+//   - role: string (required, enum: ['user', 'admin'])
+//
+// ===============================================================
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "holdenchandler@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidString(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
+    function isRecent(time) {
+      return time is number && time <= request.time.toMillis() + 60000; // Allow 1 min clock drift
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidWildlifeReport(data) {
+      return hasRequiredFields(['lat', 'lng', 'type', 'timestamp', 'expiresAt', 'reportCount', 'uid']) &&
+             hasOnlyAllowedFields(['lat', 'lng', 'type', 'timestamp', 'expiresAt', 'reportCount', 'uid']) &&
+             data.lat is number && data.lng is number &&
+             data.type in ['deer-live', 'deer-dead', 'raccoon', 'squirrel', 'bear'] &&
+             data.timestamp is number && data.expiresAt is number &&
+             data.reportCount is number && data.reportCount >= 1 &&
+             isValidString(data.uid, 128);
+    }
+
+    function isValidUser(data) {
+      return hasRequiredFields(['email', 'role']) &&
+             hasOnlyAllowedFields(['email', 'role', 'displayName', 'photoURL']) &&
+             isValidEmail(data.email) && 
+             data.role in ['user', 'admin'] &&
+             (!('displayName' in data) || isValidString(data.displayName, 100)) &&
+             (!('photoURL' in data) || isValidString(data.photoURL, 500));
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == 'user';
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /wildlife_reports/{reportId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+                      isValidWildlifeReport(request.resource.data) && 
+                      request.resource.data.uid == request.auth.uid &&
+                      isRecent(request.resource.data.timestamp);
+      allow update: if isAuthenticated() && 
+                      isValidWildlifeReport(request.resource.data) && 
+                      (
+                        // Owner can update everything (e.g. if they made a mistake)
+                        (request.auth.uid == resource.data.uid) ||
+                        // Others can only increment/decrement reportCount
+                        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reportCount']) && 
+                         math.abs(request.resource.data.reportCount - resource.data.reportCount) == 1)
+                      );
+      allow delete: if isAuthenticated() && (request.auth.uid == resource.data.uid || isAdmin());
+    }
+  }
+}

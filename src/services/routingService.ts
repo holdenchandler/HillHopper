@@ -6,17 +6,21 @@ export const getMountainRoute = async (
 ): Promise<RouteStep[]> => {
   try {
     const response = await fetch(
-      `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&steps=true`
+      `https://router.project-osrm.org/route/v1/driving/${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&steps=true&geometries=geojson`
     );
     const data = await response.json();
 
-    if (data.code !== 'Ok') {
+    if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
       throw new Error('Routing failed');
     }
 
     const route = data.routes[0];
-    const fullGeometry = route.geometry.coordinates; // [lng, lat][]
+    const fullGeometry = route.geometry?.coordinates; // [lng, lat][]
     const steps: RouteStep[] = [];
+
+    if (!fullGeometry || !Array.isArray(fullGeometry)) {
+      throw new Error('Invalid route geometry');
+    }
 
     // Map geometry to RouteSteps for smooth simulation
     fullGeometry.forEach((coord: [number, number], i: number) => {

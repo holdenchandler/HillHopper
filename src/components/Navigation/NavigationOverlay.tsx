@@ -224,14 +224,10 @@ export const NavigationOverlay: React.FC<NavigationOverlayProps> = ({
         {/* Thumbnail Wildlife Hazard Button */}
         <div className="absolute right-0 bottom-24 pointer-events-auto">
           <Popover>
-            <PopoverTrigger asChild>
-              <Button 
-                variant="outline" 
-                size="icon"
-                className="w-10 h-10 rounded-full bg-[#40513B] border-2 border-white shadow-lg hover:scale-110 transition-transform"
-              >
-                <PawPrint className="text-white" size={20} />
-              </Button>
+            <PopoverTrigger
+              className="w-10 h-10 rounded-full bg-[#40513B] border-2 border-white shadow-lg hover:scale-110 transition-transform flex items-center justify-center cursor-pointer"
+            >
+              <PawPrint className="text-white" size={20} />
             </PopoverTrigger>
             <PopoverContent side="top" align="end" className="w-48 p-2 rounded-2xl border-2 border-[#40513B]/20 shadow-xl bg-white/95 backdrop-blur">
               <div className="flex flex-col gap-1">

@@ -1,0 +1,45 @@
+{
+  "entities": {
+    "WildlifeReport": {
+      "title": "WildlifeReport",
+      "description": "A user-reported wildlife sighting or hazard.",
+      "type": "object",
+      "properties": {
+        "lat": { "type": "number", "description": "Latitude of the report." },
+        "lng": { "type": "number", "description": "Longitude of the report." },
+        "type": { 
+          "type": "string", 
+          "enum": ["deer-live", "deer-dead", "raccoon", "squirrel", "bear"],
+          "description": "Type of wildlife reported." 
+        },
+        "timestamp": { "type": "number", "description": "Creation timestamp." },
+        "expiresAt": { "type": "number", "description": "When the report should disappear." },
+        "reportCount": { "type": "number", "description": "Number of users who confirmed this report." },
+        "uid": { "type": "string", "description": "UID of the user who created the report." }
+      },
+      "required": ["lat", "lng", "type", "timestamp", "expiresAt", "reportCount", "uid"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile information.",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "admin"] }
+      },
+      "required": ["email", "role"]
+    }
+  },
+  "firestore": {
+    "/wildlife_reports/{reportId}": {
+      "schema": "WildlifeReport",
+      "description": "Collection of wildlife reports shared across all users."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Private user profile data."
+    }
+  }
+}

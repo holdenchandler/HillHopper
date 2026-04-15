@@ -176,7 +176,10 @@ export const RealMap: React.FC<RealMapProps> = ({
               className: 'wildlife-icon',
               html: `<div style="font-size: 20px;">${
                 report.type === 'deer-live' ? '🦌' : 
-                report.type === 'bear' ? '🐻' : '🐾'
+                report.type === 'deer-dead' ? '🦴' :
+                report.type === 'bear' ? '🐻' :
+                report.type === 'raccoon' ? '🦝' :
+                report.type === 'squirrel' ? '🐿️' : '🐾'
               }</div>`,
               iconSize: [25, 25]
             })}
