@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search as SearchIcon, MapPin, Flag, History, Trash2, X } from 'lucide-react';
+import { Search as SearchIcon, MapPin, Flag, History, Trash2, X, Mic, MicOff } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Card } from '../ui/card';
 import { Slider } from '../ui/slider';
@@ -29,8 +29,49 @@ export const USSearch: React.FC<USSearchProps> = ({
   const [googleReady, setGoogleReady] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
+  const [isListening, setIsListening] = useState(false);
   const autocompleteService = useRef<any>(null);
   const placesService = useRef<any>(null);
+  const recognitionRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window)) {
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-US';
+
+      recognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        handleSearch(transcript);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error("Speech recognition error", event.error);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    } else {
+      try {
+        recognitionRef.current?.start();
+        setIsListening(true);
+      } catch (e) {
+        console.error("Failed to start speech recognition", e);
+      }
+    }
+  };
 
   useEffect(() => {
     const savedHistory = localStorage.getItem('hillhopper_search_history');
@@ -262,11 +303,22 @@ export const USSearch: React.FC<USSearchProps> = ({
           onFocus={() => setIsFocused(true)}
           onBlur={() => setTimeout(() => setIsFocused(false), 200)}
           placeholder={placeholder}
-          className={`pl-12 pr-24 h-14 bg-white/90 backdrop-blur border-4 rounded-2xl font-bold text-lg focus-visible:ring-[#40513B] shadow-lg transition-all ${
+          className={`pl-12 pr-32 h-14 bg-white/90 backdrop-blur border-4 rounded-2xl font-bold text-lg focus-visible:ring-[#40513B] shadow-lg transition-all ${
             error ? 'border-red-400' : 'border-[#40513B]/20'
           }`}
         />
         <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+          <button
+            onClick={toggleListening}
+            className={`p-2 rounded-xl transition-all ${
+              isListening 
+                ? 'bg-red-500 text-white animate-pulse' 
+                : 'bg-[#40513B]/5 text-[#40513B]/40 hover:bg-[#40513B]/10'
+            }`}
+            title={isListening ? "Listening..." : "Voice Search"}
+          >
+            {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+          </button>
           {query && (
             <button
               onClick={() => {

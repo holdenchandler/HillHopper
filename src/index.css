@@ -129,6 +129,19 @@
     }
 }
 
+@layer utilities {
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .waze-glow {
+    filter: drop-shadow(0 0 4px rgba(147, 51, 234, 0.5));
+  }
+}
+
 [data-state=active] {
   background-color: var(--active-bg, transparent) !important;
 }

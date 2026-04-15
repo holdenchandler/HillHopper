@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap, Circle } from
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { RouteStep, DeerZone, WildlifeReport, MountainPoint } from '../../lib/types';
+import { CarModelId, CAR_MODELS } from '../../lib/carModels';
 
 // Use CDN for default marker icons to avoid build issues
 const DefaultIcon = L.icon({
@@ -19,7 +20,9 @@ interface RealMapProps {
   zoom: number;
   carLocation: [number, number];
   carHeading: number;
+  carModelId?: CarModelId;
   route?: RouteStep[];
+  isPreview?: boolean;
   deerZones: DeerZone[];
   wildlifeReports?: WildlifeReport[];
   points: MountainPoint[];
@@ -28,7 +31,12 @@ interface RealMapProps {
 // Component to handle map centering
 function ChangeView({ center, zoom }: { center: [number, number], zoom: number }) {
   const map = useMap();
-  map.setView(center, zoom);
+  useEffect(() => {
+    map.flyTo(center, zoom, {
+      duration: 1.5,
+      easeLinearity: 0.25
+    });
+  }, [center, zoom, map]);
   return null;
 }
 
@@ -37,7 +45,9 @@ export const RealMap: React.FC<RealMapProps> = ({
   zoom,
   carLocation,
   carHeading,
+  carModelId = 'sedan',
   route = [],
+  isPreview = false,
   deerZones,
   wildlifeReports = [],
   points
@@ -50,9 +60,11 @@ export const RealMap: React.FC<RealMapProps> = ({
     .filter(step => typeof step.lat === 'number' && typeof step.lng === 'number')
     .map(step => [step.lat, step.lng] as [number, number]);
 
+  const carEmoji = CAR_MODELS.find(m => m.id === carModelId)?.emoji || '🚗';
+
   const carIcon = L.divIcon({
     className: 'custom-car-icon',
-    html: `<div style="transform: rotate(${carHeading || 0}deg); font-size: 24px; transition: transform 0.3s ease-out;">🚗</div>`,
+    html: `<div style="transform: rotate(${carHeading || 0}deg); font-size: 24px; transition: transform 0.3s ease-out; filter: drop-shadow(0 4px 4px rgba(0,0,0,0.3));">${carEmoji}</div>`,
     iconSize: [30, 30],
     iconAnchor: [15, 15]
   });
@@ -63,7 +75,10 @@ export const RealMap: React.FC<RealMapProps> = ({
         center={center} 
         zoom={zoom} 
         style={{ height: '100%', width: '100%' }}
-        zoomControl={false}
+        zoomControl={true}
+        scrollWheelZoom={true}
+        doubleClickZoom={true}
+        touchZoom={true}
       >
         <ChangeView center={carLocation} zoom={zoom} />
         <TileLayer
@@ -74,8 +89,32 @@ export const RealMap: React.FC<RealMapProps> = ({
         {/* Route */}
         {routePath.length > 1 && (
           <>
-            <Polyline positions={routePath} color="#40513B" weight={8} opacity={0.3} />
-            <Polyline positions={routePath} color="#40513B" weight={4} opacity={0.8} dashArray="1, 15" />
+            <Polyline 
+              positions={routePath} 
+              color={isPreview ? "#3B82F6" : "#9333EA"} 
+              weight={16} 
+              opacity={isPreview ? 0.1 : 0.15} 
+              className={isPreview ? "" : "waze-glow"} 
+            />
+            <Polyline 
+              positions={routePath} 
+              color={isPreview ? "#3B82F6" : "#9333EA"} 
+              weight={12} 
+              opacity={isPreview ? 0.2 : 0.3} 
+            />
+            <Polyline 
+              positions={routePath} 
+              color="white" 
+              weight={8} 
+              opacity={1} 
+              dashArray={isPreview ? "10, 10" : undefined}
+            />
+            <Polyline 
+              positions={routePath} 
+              color={isPreview ? "#60A5FA" : "#A855F7"} 
+              weight={5} 
+              opacity={1} 
+            />
             {/* Destination Marker */}
             <Marker 
               position={routePath[routePath.length - 1]} 
@@ -93,18 +132,40 @@ export const RealMap: React.FC<RealMapProps> = ({
         <Marker position={carLocation} icon={carIcon} />
 
         {/* Deer Zones */}
-        {deerZones.map(zone => (
-          <Circle 
-            key={zone.id}
-            center={zone.center}
-            radius={zone.radius}
-            pathOptions={{ 
-              color: zone.riskLevel === 'extreme' ? 'red' : 'orange',
-              fillColor: zone.riskLevel === 'extreme' ? 'red' : 'orange',
-              fillOpacity: 0.2
-            }}
-          />
-        ))}
+        {deerZones.map(zone => {
+          const isHighRisk = zone.riskLevel === 'high' || zone.riskLevel === 'extreme';
+          const color = zone.riskLevel === 'extreme' ? '#EF4444' : 
+                       zone.riskLevel === 'high' ? '#FB923C' : 
+                       zone.riskLevel === 'moderate' ? '#FACC15' : '#4ADE80';
+          
+          return (
+            <React.Fragment key={zone.id}>
+              {/* Outer Glow */}
+              <Circle 
+                center={zone.center}
+                radius={zone.radius * 1.2}
+                pathOptions={{ 
+                  color: color,
+                  fillColor: color,
+                  fillOpacity: isHighRisk ? 0.1 : 0.05,
+                  weight: 0
+                }}
+              />
+              {/* Main Zone */}
+              <Circle 
+                center={zone.center}
+                radius={zone.radius}
+                pathOptions={{ 
+                  color: color,
+                  fillColor: color,
+                  fillOpacity: isHighRisk ? 0.3 : 0.2,
+                  weight: isHighRisk ? 3 : 1,
+                  dashArray: isHighRisk ? undefined : '5, 10'
+                }}
+              />
+            </React.Fragment>
+          );
+        })}
 
         {/* Wildlife Reports */}
         {wildlifeReports.map(report => (

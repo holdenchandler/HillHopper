@@ -94,5 +94,62 @@ export const THEMES: Theme[] = [
         mountain: '#374151',
       }
     }
+  },
+  {
+    id: 'autumn',
+    name: 'Autumn Ridge',
+    colors: {
+      primary: '#92400E',
+      secondary: '#B45309',
+      accent: '#F97316',
+      background: '#FFFBEB',
+      card: '#FFFFFF',
+      text: '#451A03',
+      map: {
+        grass: '#FDE68A',
+        forest: '#92400E',
+        road: '#4B5563',
+        water: '#0891B2',
+        mountain: '#78350F',
+      }
+    }
+  },
+  {
+    id: 'winter',
+    name: 'Winter Peak',
+    colors: {
+      primary: '#1E3A8A',
+      secondary: '#3B82F6',
+      accent: '#93C5FD',
+      background: '#F0F9FF',
+      card: '#FFFFFF',
+      text: '#0C4A6E',
+      map: {
+        grass: '#E0F2FE',
+        forest: '#1E3A8A',
+        road: '#64748B',
+        water: '#0EA5E9',
+        mountain: '#1E293B',
+      }
+    }
+  },
+  {
+    id: 'retro',
+    name: 'Retro Valley',
+    colors: {
+      primary: '#701A75',
+      secondary: '#A21CAF',
+      accent: '#F472B6',
+      background: '#FDF2F8',
+      card: '#FFFFFF',
+      text: '#4A044E',
+      map: {
+        grass: '#FBCFE8',
+        forest: '#701A75',
+        road: '#1E293B',
+        water: '#22D3EE',
+        mountain: '#4C1D95',
+      }
+    }
   }
 ];
